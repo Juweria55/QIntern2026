@@ -3,6 +3,12 @@ from quantum_encoder import quantum_encode
 from shared_key import get_shared_key
 from authentication import gen_auth_tag
 from message_encoder import extract_binary
+from qotp import gene_qotp_keys, apply_qotp
+from quantum_channel import trans_qstate
+from receiver import received_qstate
+from message_decoder import measure_qstate, bin_to_text
+
+
 from bb84 import (
     gen_alice_bits,
     gen_alice_bases,
@@ -12,6 +18,12 @@ from bb84 import (
     executing_bb84,
     key_sifting,
     qber
+)
+
+from anamorphic import (
+    create_public_message,
+    create_hidden_message,
+    create_anamorphic_ciphertext
 )
 
 used_nonces = set()  # check if the nonce already exist or not....
@@ -38,48 +50,105 @@ def receive_packet(packet):
             print("Quantum state prepration is successfull.. ")
             print(quantum_circuit)
             print("\n bb84 key generation begins....")
-            num_qubits = 16
-            alice_bits = gen_alice_bits(num_qubits)
-            alice_bases = gen_alice_bases(num_qubits)
+            session_key = []
+            accepted = False
+            qber_value = None
+            while len(session_key) < 2 * len(binary_message):
+                num_qubits = 128
+                alice_bits = gen_alice_bits(num_qubits)
+                alice_bases = gen_alice_bases(num_qubits)
 
-            print("\n alice bits:", alice_bits)
-            print("\n alice bases:", alice_bases)
+                print("\n alice bits:", alice_bits)
+                print("\n alice bases:", alice_bases)
 
-            bb84_circuit = state_prep_alice(alice_bits, alice_bases)
-            print("bb84 quantum circuit:", bb84_circuit)
-            bob_basis = bob_bases(num_qubits)
-            print("Bob bases:", bob_basis)
+                bb84_circuit = state_prep_alice(alice_bits, alice_bases)
+                print("bb84 quantum circuit:", bb84_circuit)
+                bob_basis = bob_bases(num_qubits)
+                print("Bob bases:", bob_basis)
 
             # bob measures the qubit
-            bb84_circuit = bob_measures(bb84_circuit, bob_basis)
+                bb84_circuit = bob_measures(bb84_circuit, bob_basis)
 
-            print("\n BB84 circuit after bob's measurement:", bb84_circuit)
+                print("\n BB84 circuit after bob's measurement:", bb84_circuit)
 
             # execute the circuit
-            bob_bits = executing_bb84(bb84_circuit)
-            print("\n Bob bits:", bob_bits)
+                bob_bits = executing_bb84(bb84_circuit)
+                print("\n Bob bits:", bob_bits)
+                # alice and bob perform key sifting''''
+                alice_key, bob_key = key_sifting(
+                    alice_bits,
+                    bob_bits,
+                    alice_bases,
+                    bob_basis
+                )
 
-            # alice and bob perform key sifting''''
-            alice_key, bob_key = key_sifting(
-                alice_bits,
-                bob_bits,
-                alice_bases,
-                bob_basis
-            )
+                result = qber(alice_key, bob_key)
+                if result is not None:
+                    qber_value, accepted, key = result
+
+                if accepted:
+                    session_key.extend(key)
+                session_key = session_key[:2 * len(binary_message)]
+                accepted = True
+
+            # calculate qber and gen session key
+            # qber_value, accepted, session_key = qber(alice_key, bob_key)
 
             print("\nAlice key:", alice_key)
             print("\nBob key:", bob_key)
 
-            # calculate qber and gen session key
-            qber_value, accepted, session_key = qber(alice_key, bob_key)
-            print("\nQBER:", qber)
+            print("Binary length:", len(binary_message))
+            # print("Session key:", session_key)
+            # print("Session key length:", len(session_key))
+
+            if session_key is not None:
+
+                print("session key:", session_key)
+                print("session key length:", len(session_key))
+            else:
+                print("session key is not generated.")
+
+            if accepted:
+                x_key, z_key = gene_qotp_keys(session_key, len(binary_message))
+
+                print("\n X key:", x_key)
+                print("\n Z key:", z_key)
+
+                encrypted_circuit = apply_qotp(quantum_circuit, x_key, z_key)
+
+                print("\n Quntum circuit after QOTP:")
+                print(encrypted_circuit)
+
+                mode = packet["mode"]
+
+                anamorphic_ciphertext = create_anamorphic_ciphertext(
+                    encrypted_circuit,
+                    mode)
+
+                print(anamorphic_ciphertext)
+
+                # passing encrypted channel to the reciever
+                received_packet = trans_qstate(anamorphic_ciphertext)
+                received_circuit = received_packet["ciphertext"]
+
+                decrypted_circuit = received_qstate(
+                    received_circuit, x_key, z_key)
+                print("\n Decrypted circuit:")
+                print(decrypted_circuit)
+
+                recovered_binary = measure_qstate(decrypted_circuit)
+                recovered_message = bin_to_text(recovered_binary)
+
+                print("\n recovered message:", recovered_message)
+
+            print("\nQBER:", qber_value)
             print("\nAccepted:", accepted)
             if accepted:
                 print("\n session key:", session_key)
             else:
                 print("session key not generated.")
 
-            print("\n Gateway acceted the packet")
+            print("\n Gateway accepted the packet")
         else:
             print("\nGateway rejected the packet")
 

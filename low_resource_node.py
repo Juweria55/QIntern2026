@@ -4,12 +4,37 @@ from packet_format import create_packet
 from gateway_server import receive_packet
 from shared_key import get_shared_key
 from authentication import gen_auth_tag
+from anamorphic import create_public_message, create_hidden_message
+from attacker import coercieve_attack
 
 # generate normal messagee.....
-normal_message = "AUTH REQUEST..."
+# normal_message = "AUTH REQUEST..."
+public_text = input("Enter public message:")
+
+print("elect Mode")
+print("1. Normal")
+print("2. Real")
+print("3. Dummy")
+
+mode = input("Enter choice:")
+# hidden_text = input("Enter hidden text:")
+if mode == "1":
+    hidden_text = ""
+elif mode == "2":
+    hidden_text = input("Enter Real hidden message")
+elif mode == "3":
+    hidden_text = input("Enter Dummy hidden message")
+
+else:
+    print("Invalid choice")
+    exit()
+
+
+normal_message = create_public_message(public_text)
+covert_message = create_hidden_message(hidden_text)
 
 # create the covert text
-covert_message = "we are being watched"  # or staye alert
+# covert_message = "Hi"  # or staye alert
 
 # now generate the time stamp
 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -26,7 +51,8 @@ packet = create_packet(
     covert_message,
     timestamp,
     nonce,
-    authentication_tag
+    authentication_tag,
+    mode
 )
 
 shared_key = get_shared_key()  # get the shared keyyy
@@ -53,7 +79,8 @@ for key, value in packet.items():
 
 
 # print(".....")
-print("\n sending packets to Gtaeway... \n")
+print("\n sending packets.... \n")
+coercieve_attack(packet)
 receive_packet(packet)
 
 

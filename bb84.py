@@ -67,8 +67,8 @@ def bob_measures(circuit, bob_bases):
 
 def executing_bb84(circuit):
     simulator = AerSimulator()
-    compiled_circuit = transpile(circuit, simulator)
-    job = simulator.run(compiled_circuit, shots=1)
+    # compiled_circuit = transpile(circuit, simulator)
+    job = simulator.run(circuit, shots=1)
     result = job.result()
     counts = result.get_counts()
     measured_bits = list(counts.keys())[0]
