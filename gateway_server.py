@@ -7,7 +7,8 @@ from qotp import gene_qotp_keys, apply_qotp
 from quantum_channel import trans_qstate
 from receiver import received_qstate
 from message_decoder import measure_qstate, bin_to_text
-
+import time
+from performance import save_result
 
 from bb84 import (
     gen_alice_bits,
@@ -30,6 +31,7 @@ used_nonces = set()  # check if the nonce already exist or not....
 
 
 def receive_packet(packet):
+    total_start = time.perf_counter()
     print("Gateway")
     print(" waiting to recieve the packet......")
     print()
@@ -49,10 +51,19 @@ def receive_packet(packet):
             quantum_circuit = quantum_encode(binary_message)
             print("Quantum state prepration is successfull.. ")
             print(quantum_circuit)
+
+            bb84_start = time.perf_counter()
             print("\n bb84 key generation begins....")
+
             session_key = []
+            alice_key = []
+            bob_key = []
             accepted = False
             qber_value = None
+
+            qotp_enc_time = 0
+            qotp_dec_time = 0
+
             while len(session_key) < 2 * len(binary_message):
                 num_qubits = 128
                 alice_bits = gen_alice_bits(num_qubits)
@@ -89,7 +100,10 @@ def receive_packet(packet):
                 if accepted:
                     session_key.extend(key)
                 session_key = session_key[:2 * len(binary_message)]
-                accepted = True
+                # accepted = True
+
+            bb84_end = time.perf_counter()
+            bb84_time = bb84_end - bb84_start
 
             # calculate qber and gen session key
             # qber_value, accepted, session_key = qber(alice_key, bob_key)
@@ -101,7 +115,7 @@ def receive_packet(packet):
             # print("Session key:", session_key)
             # print("Session key length:", len(session_key))
 
-            if session_key is not None:
+            if len(session_key) > 0:
 
                 print("session key:", session_key)
                 print("session key length:", len(session_key))
@@ -114,7 +128,12 @@ def receive_packet(packet):
                 print("\n X key:", x_key)
                 print("\n Z key:", z_key)
 
+                qotp_enc_start = time.perf_counter()
+
                 encrypted_circuit = apply_qotp(quantum_circuit, x_key, z_key)
+
+                qotp_enc_end = time.perf_counter()
+                qotp_enc_time = qotp_enc_end - qotp_enc_start
 
                 print("\n Quntum circuit after QOTP:")
                 print(encrypted_circuit)
@@ -131,8 +150,15 @@ def receive_packet(packet):
                 received_packet = trans_qstate(anamorphic_ciphertext)
                 received_circuit = received_packet["ciphertext"]
 
+                qotp_dec_start = time.perf_counter()
+
                 decrypted_circuit = received_qstate(
                     received_circuit, x_key, z_key)
+
+                qotp_dec_end = time.perf_counter()
+
+                qotp_dec_time = qotp_dec_end - qotp_dec_start
+
                 print("\n Decrypted circuit:")
                 print(decrypted_circuit)
 
@@ -149,6 +175,30 @@ def receive_packet(packet):
                 print("session key not generated.")
 
             print("\n Gateway accepted the packet")
+            # stopping total timeer
+            total_end = time.perf_counter()
+            total_time = total_end - total_start
+
+            save_result(
+
+                mode=mode,
+                message_length=len(binary_message),
+                num_qubits=num_qubits,
+                session_key_length=len(session_key),
+                qber=qber_value,
+                bb84_time=bb84_time,
+                qotp_enc_time=qotp_enc_time,
+                qotp_dec_time=qotp_dec_time,
+                total_time=total_time
+            )
+
+            print("\n Performance......")
+            print("BB84 time:", bb84_time)
+            print("QOTP Encryption time:", qotp_enc_time)
+            print("QOTP Decryption time:", qotp_dec_time)
+            print("Total Protoccol time:", total_time)
+            print("------------------------------------")
+
         else:
             print("\nGateway rejected the packet")
 
